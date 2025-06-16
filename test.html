@@ -1,0 +1,322 @@
+mycruze/Desktop/JS/p2p_file_transfer/test.html
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>P2P Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        .section {
+            border: 1px solid #ccc;
+            padding: 20px;
+            margin: 10px 0;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+        }
+
+        #log {
+            background: #f0f0f0;
+            padding: 10px;
+            height: 300px;
+            overflow-y: scroll;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        input {
+            padding: 5px;
+            margin: 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>P2P File Transfer Test</h1>
+
+    <div class="section">
+        <h3>Sender</h3>
+        <input type="file" id="fileInput">
+        <button onclick="createRoom()">Create Room</button>
+        <div id="roomCode"></div>
+    </div>
+
+
+    <div class="section">
+        <h3>Receiver</h3>
+        <input type="text" id="codeInput" placeholder="Enter room code">
+        <button onclick="joinRoom()">Join Room</button>
+        <div id="status"></div>
+    </div>
+
+    <button onclick="testDownload()">Test Download</button>
+
+
+    <div class="section">
+        <h3>Debug Log</h3>
+        <div id="log"></div>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        let socket = null;
+        let peerConnection = null;
+        let dataChannel = null;
+        let currentFile = null;
+        let roomCode = null;
+        let isInitiator = false;
+
+        // WebRTC Configuration
+        const rtcConfig = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
+        };
+
+        // Initialize
+        function init() {
+            socket = io();
+
+            socket.on('connect', () => {
+                log('Connected to server');
+            });
+
+            socket.on('disconnect', () => {
+                log('Disconnected from server');
+            });
+
+            socket.on('peer-joined', (data) => {
+                log('Peer joined: ' + JSON.stringify(data));
+            });
+
+            socket.on('start-offer', () => {
+                log('Received start-offer signal');
+                createOffer();
+            });
+
+            socket.on('signal', (data) => {
+                log('Received signal: ' + data.type);
+                handleSignal(data);
+            });
+
+            // File input change
+            document.getElementById('fileInput').addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    currentFile = e.target.files[0];
+                    log('File selected: ' + currentFile.name);
+                }
+            });
+        }
+
+        function createRoom() {
+            if (!currentFile) {
+                alert('Please select a file first');
+                return;
+            }
+
+            isInitiator = true;
+            log('Creating room...');
+
+            socket.emit('create-room', (code) => {
+                roomCode = code;
+                document.getElementById('roomCode').textContent = 'Room Code: ' + code;
+                log('Room created: ' + code);
+
+                // Set file info
+                socket.emit('set-file-info', {
+                    roomCode: roomCode,
+                    fileInfo: {
+                        name: currentFile.name,
+                        size: currentFile.size,
+                        type: currentFile.type
+                    }
+                });
+
+                setupPeerConnection();
+            });
+        }
+
+        function joinRoom() {
+            const code = document.getElementById('codeInput').value.trim().toUpperCase();
+            if (!code) {
+                alert('Please enter a room code');
+                return;
+            }
+
+            roomCode = code;
+            isInitiator = false;
+            log('Joining room: ' + code);
+
+            setupPeerConnection();
+
+            socket.emit('join-room', code, (response) => {
+                log('Join response: ' + JSON.stringify(response));
+                if (response.success) {
+                    document.getElementById('status').textContent = 'Joined room successfully';
+                } else {
+                    document.getElementById('status').textContent = 'Failed to join: ' + response.error;
+                }
+            });
+        }
+
+        function setupPeerConnection() {
+            log('Setting up peer connection...');
+            peerConnection = new RTCPeerConnection(rtcConfig);
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    log('Sending ICE candidate');
+                    socket.emit('signal', {
+                        type: 'ice-candidate',
+                        payload: event.candidate,
+                        room: roomCode
+                    });
+                }
+            };
+
+            peerConnection.onconnectionstatechange = () => {
+                log('Connection state: ' + peerConnection.connectionState);
+            };
+
+            if (isInitiator) {
+                dataChannel = peerConnection.createDataChannel('fileTransfer');
+                setupDataChannel(dataChannel);
+                log('Data channel created');
+            } else {
+                peerConnection.ondatachannel = (event) => {
+                    dataChannel = event.channel;
+                    setupDataChannel(dataChannel);
+                    log('Data channel received');
+                };
+            }
+        }
+
+        function setupDataChannel(channel) {
+            channel.onopen = () => {
+                log('Data channel opened!');
+                if (isInitiator && currentFile) {
+                    log('Starting file transfer...');
+                    // File transfer logic would go here
+                }
+            };
+
+            channel.onmessage = (event) => {
+                log('Data received: ' + event.data);
+            };
+
+            channel.onerror = (error) => {
+                log('Data channel error: ' + error);
+            };
+        }
+
+        async function createOffer() {
+            try {
+                log('Creating offer...');
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+
+                socket.emit('signal', {
+                    type: 'offer',
+                    payload: offer,
+                    room: roomCode
+                });
+                log('Offer sent');
+            } catch (error) {
+                log('Error creating offer: ' + error.message);
+            }
+        }
+
+        async function handleSignal(signal) {
+            try {
+                switch (signal.type) {
+                    case 'offer':
+                        log('Handling offer...');
+                        await peerConnection.setRemoteDescription(signal.payload);
+                        const answer = await peerConnection.createAnswer();
+                        await peerConnection.setLocalDescription(answer);
+
+                        socket.emit('signal', {
+                            type: 'answer',
+                            payload: answer,
+                            room: roomCode
+                        });
+                        log('Answer sent');
+                        break;
+
+                    case 'answer':
+                        log('Handling answer...');
+                        await peerConnection.setRemoteDescription(signal.payload);
+                        break;
+
+                    case 'ice-candidate':
+                        log('Adding ICE candidate...');
+                        await peerConnection.addIceCandidate(signal.payload);
+                        break;
+                }
+            } catch (error) {
+                log('Error handling signal: ' + error.message);
+            }
+        }
+
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function verifyConnection() {
+            log('Verifying Socket.IO connection...');
+            log('Socket connected: ' + socket.connected);
+            log('Socket ID: ' + socket.id);
+            log('Room code: ' + roomCode);
+            log('Is initiator: ' + isInitiator);
+
+            // Test signal
+            socket.emit('signal', {
+                type: 'test',
+                payload: 'Hello from ' + (isInitiator ? 'initiator' : 'receiver'),
+                room: roomCode
+            });
+        }
+
+        function testDownload() {
+            // Create a test file
+            const testContent = "This is a test file for download functionality.";
+            const blob = new Blob([testContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'test-download.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            log('Test download triggered', 'info');
+        }
+
+        // Add a test button to your HTML (temporary):
+
+
+        // Initialize when page loads
+        init();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,31 @@
+{
+  "name": "p2p_file_transfer",
+  "version": "1.0.0",
+  "description": "P2P file transfer application",
+  "type": "module",
+  "main": "dist/new_server.js",
+  "scripts": {
+    "start": "node dist/new_server.js",
+    "dev": "ts-node new_server.ts",
+    "build": "tsc",
+    "build:client": "tsc --project tsconfig.client.json",
+    "build:all": "npm run build && npm run build:client",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.17.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.12",
+    "@types/express": "^4.17.13",
+    "@types/node": "^16.11.12",
+    "@types/socket.io-client": "^1.4.36",
+    "@types/wicg-file-system-access": "^2023.10.6",
+    "nodemon": "^3.0.2",
+    "ts-node": "^10.4.0",
+    "typescript": "^4.5.4"
+  }
+}

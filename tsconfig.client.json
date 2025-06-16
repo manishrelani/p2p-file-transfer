@@ -1,0 +1,21 @@
+{
+    "compilerOptions": {
+        "target": "es2020",
+        "module": "ES2015",
+        "outDir": "dist",
+        "moduleResolution": "node",
+        "rootDir": ".",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+    },
+    "include": [
+        "new_client.ts",
+        "interface.ts",
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
+}
